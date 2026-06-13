@@ -21,7 +21,7 @@ export async function POST(request: Request) {
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const { identity } = auth;
 
-  let body: { wallet?: string; t0?: string; signature?: string };
+  let body: { wallet?: string; t0?: string; signature?: string; useCaseLabel?: string };
   try {
     body = await request.json();
   } catch {
@@ -38,6 +38,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Missing signature' }, { status: 400 });
   }
   const walletLc = wallet.toLowerCase();
+
+  // Optional ENS use-case label → usecase.username.phora.eth. Must be a valid ENS label.
+  let useCaseLabel: string | null = null;
+  if (body.useCaseLabel != null && body.useCaseLabel !== '') {
+    useCaseLabel = String(body.useCaseLabel).toLowerCase();
+    if (!/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(useCaseLabel)) {
+      return NextResponse.json(
+        { error: 'use-case label must be a valid ENS label (a-z, 0-9, hyphens)' },
+        { status: 400 },
+      );
+    }
+  }
 
   // Rebuild the statement from the session's identity (never the client's claim) and
   // verify the wallet actually signed it.
@@ -59,29 +71,54 @@ export async function POST(request: Request) {
     );
   }
 
+  const events = await readIdentityEvents(identity.id);
+
   // One open window per (identity, wallet).
-  const existing = foldAttestations(await readIdentityEvents(identity.id));
-  if (existing.some((a) => a.wallet === walletLc && a.status === 'open')) {
+  if (foldAttestations(events).some((a) => a.wallet === walletLc && a.status === 'open')) {
     return NextResponse.json(
       { error: 'Wallet already has an open link to this identity' },
       { status: 409 },
     );
   }
+  // Use-case label is unique per identity (mirrors the DB partial-unique index).
+  if (
+    useCaseLabel &&
+    events.some((e) => e.eventType === 'link' && e.useCaseLabel === useCaseLabel)
+  ) {
+    return NextResponse.json(
+      { error: 'use-case label already in use for this identity' },
+      { status: 409 },
+    );
+  }
 
-  const row = await appendEvent({
-    eventType: 'link',
-    identityId: identity.id,
-    walletAddress: walletLc,
-    t0: new Date(t0),
-    statement,
-    signature,
-    eventTime: new Date(),
-  });
+  let row;
+  try {
+    row = await appendEvent({
+      eventType: 'link',
+      identityId: identity.id,
+      walletAddress: walletLc,
+      useCaseLabel,
+      t0: new Date(t0),
+      statement,
+      signature,
+      eventTime: new Date(),
+    });
+  } catch (err) {
+    // Backstop the label-uniqueness race at the DB index.
+    if (/use_case|unique constraint/i.test(String((err as Error)?.message))) {
+      return NextResponse.json(
+        { error: 'use-case label already in use for this identity' },
+        { status: 409 },
+      );
+    }
+    throw err;
+  }
 
   return NextResponse.json({
     status: 'linked',
     seq: row.seq,
     wallet: walletLc,
+    useCaseLabel,
     t0: row.t0,
     t1: null,
     prevHash: row.prevHash,

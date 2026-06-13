@@ -22,6 +22,13 @@
       "when": 1781378862081,
       "tag": "0002_append_only_trigger",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1781383909218,
+      "tag": "0003_loose_ogun",
+      "breakpoints": true
     }
   ]
 }

@@ -5,8 +5,11 @@ import {
   timestamp,
   bigserial,
   bigint,
+  smallint,
   index,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 /**
  * The registry's anchor record (spine step 2).
@@ -26,6 +29,8 @@ export const identities = pgTable('identities', {
   worldIdNullifier: text('world_id_nullifier').notNull().unique(),
   // The Dynamic user id (JWT `sub`) that owns this record.
   dynamicUserId: text('dynamic_user_id').notNull(),
+  // Platform-unique handle → username.phora.eth (step 4). Nullable until assigned.
+  username: text('username').unique(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -63,6 +68,7 @@ export const attestationEvents = pgTable(
 
     // link events
     walletAddress: text('wallet_address'), // W, lowercased
+    useCaseLabel: text('use_case_label'), // ENS use-case label (→ usecase.username.phora.eth)
     t0: timestamp('t0', { withTimezone: true }), // link time
     statement: text('statement'), // the canonical message W signed
     signature: text('signature'), // W's signature over `statement`
@@ -77,8 +83,17 @@ export const attestationEvents = pgTable(
     eventTime: timestamp('event_time', { withTimezone: true }).notNull(),
     prevHash: text('prev_hash').notNull().unique(),
     hash: text('hash').notNull().unique(),
+    // Canonicalization version this row was hashed under (null ⇒ v1). Not hashed.
+    canonVersion: smallint('canon_version'),
   },
-  (table) => [index('attestation_events_identity_idx').on(table.identityId)],
+  (table) => [
+    index('attestation_events_identity_idx').on(table.identityId),
+    // A use-case label is unique per identity — one usecase.username.phora.eth per
+    // wallet role. Enforced only on link events that carry a label.
+    uniqueIndex('attestation_events_identity_use_case_idx')
+      .on(table.identityId, table.useCaseLabel)
+      .where(sql`event_type = 'link' and use_case_label is not null`),
+  ],
 );
 
 export type AttestationEvent = typeof attestationEvents.$inferSelect;

@@ -3,18 +3,27 @@ import { db } from '@/lib/db';
 import { attestationEvents } from '@/lib/db/schema';
 import {
   GENESIS_HASH,
+  CURRENT_CANON_VERSION,
   computeEventHash,
   type ChainRow,
   type EventContent,
 } from './hashchain';
 
-function isUniqueViolation(err: unknown): boolean {
-  const e = err as { code?: string; cause?: { code?: string }; message?: string };
-  return (
-    e?.code === '23505' ||
-    e?.cause?.code === '23505' ||
-    /duplicate key|unique constraint/i.test(e?.message ?? '')
-  );
+const CHAIN_CONSTRAINTS = [
+  'attestation_events_prev_hash_unique',
+  'attestation_events_hash_unique',
+];
+
+/**
+ * A unique violation specifically on the chain columns (prev_hash/hash) — i.e. a
+ * concurrent append raced us for the tip. Only these are safe to retry; other
+ * unique violations (e.g. a duplicate use-case label) must propagate.
+ */
+function isChainContention(err: unknown): boolean {
+  const e = err as { code?: string; constraint?: string; message?: string };
+  if (e?.code !== '23505' && !/unique constraint/i.test(e?.message ?? '')) return false;
+  if (e?.constraint && CHAIN_CONSTRAINTS.includes(e.constraint)) return true;
+  return CHAIN_CONSTRAINTS.some((name) => (e?.message ?? '').includes(name));
 }
 
 /** Everything a caller supplies for an event — the chain fields are added here. */
@@ -35,13 +44,18 @@ export async function appendEvent(input: AppendInput) {
       .orderBy(desc(attestationEvents.seq))
       .limit(1);
     const prevHash = tip?.hash ?? GENESIS_HASH;
-    const hash = computeEventHash({ ...input, prevHash } as EventContent);
+    // New events are written at the current canonicalization version.
+    const hash = computeEventHash(
+      { ...input, prevHash } as EventContent,
+      CURRENT_CANON_VERSION,
+    );
     // Coerce the hashable timestamps to Date for the timestamptz columns. The hash
     // above used the same values (canonicalized to epoch-ms), so they stay in sync.
     const values = {
       eventType: input.eventType,
       identityId: input.identityId,
       walletAddress: input.walletAddress ?? null,
+      useCaseLabel: input.useCaseLabel ?? null,
       t0: input.t0 != null ? new Date(input.t0) : null,
       statement: input.statement ?? null,
       signature: input.signature ?? null,
@@ -52,13 +66,14 @@ export async function appendEvent(input: AppendInput) {
       eventTime: new Date(input.eventTime),
       prevHash,
       hash,
+      canonVersion: CURRENT_CANON_VERSION,
     };
     try {
       const [row] = await db.insert(attestationEvents).values(values).returning();
       return row;
     } catch (err) {
-      if (isUniqueViolation(err)) continue; // lost the race for this tip; retry
-      throw err;
+      if (isChainContention(err)) continue; // lost the race for this tip; retry
+      throw err; // other unique violations (e.g. duplicate use-case label) propagate
     }
   }
   throw new Error('appendEvent: exceeded retry budget');

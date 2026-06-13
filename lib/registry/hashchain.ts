@@ -22,6 +22,8 @@ export interface EventContent {
   eventType: string;
   identityId: string;
   walletAddress?: string | null;
+  /** The ENS use-case label for the attested wallet (step 4). Hashed under v2+. */
+  useCaseLabel?: string | null;
   t0?: Date | string | number | null;
   statement?: string | null;
   signature?: string | null;
@@ -42,11 +44,16 @@ function toMillis(v: Date | string | number | null | undefined): number | null {
 }
 
 /**
- * Deterministic canonical serialization of an event's content: fixed key order,
- * timestamps as epoch-ms, absent fields as `null`. The same content always yields
- * the same string regardless of source (insert path vs. DB read-back).
+ * The canonicalization version new events are written with. Each event stores the
+ * version it was hashed under, so the canonicalization can evolve without breaking
+ * the hashes of rows already in the log.
+ *  - v1: the original step-3 fields.
+ *  - v2: adds `useCaseLabel` (step 4).
  */
-export function canonicalizeEvent(c: EventContent): string {
+export const CURRENT_CANON_VERSION = 2;
+
+/** v1 — the original serialization. MUST stay byte-identical to preserve existing hashes. */
+function canonicalizeV1(c: EventContent): string {
   return JSON.stringify({
     eventType: c.eventType,
     identityId: c.identityId,
@@ -63,14 +70,44 @@ export function canonicalizeEvent(c: EventContent): string {
   });
 }
 
-/** SHA-256 (hex) of the canonical content — this row's chain hash. */
-export function computeEventHash(c: EventContent): string {
-  return createHash('sha256').update(canonicalizeEvent(c), 'utf8').digest('hex');
+/** v2 — adds `useCaseLabel` to the hashed content. */
+function canonicalizeV2(c: EventContent): string {
+  return JSON.stringify({
+    eventType: c.eventType,
+    identityId: c.identityId,
+    walletAddress: c.walletAddress ?? null,
+    useCaseLabel: c.useCaseLabel ?? null,
+    t0: toMillis(c.t0),
+    statement: c.statement ?? null,
+    signature: c.signature ?? null,
+    targetSeq: c.targetSeq ?? null,
+    t1: toMillis(c.t1),
+    authorizedBy: c.authorizedBy ?? null,
+    reason: c.reason ?? null,
+    eventTime: toMillis(c.eventTime),
+    prevHash: c.prevHash,
+  });
+}
+
+/**
+ * Deterministic canonical serialization under a specific version. Fixed key order,
+ * timestamps as epoch-ms, absent fields as `null` — so the same content always
+ * yields the same string regardless of source (insert path vs. DB read-back).
+ */
+export function canonicalizeEvent(c: EventContent, version: number): string {
+  return version >= 2 ? canonicalizeV2(c) : canonicalizeV1(c);
+}
+
+/** SHA-256 (hex) of the canonical content at `version` — this row's chain hash. */
+export function computeEventHash(c: EventContent, version: number): string {
+  return createHash('sha256').update(canonicalizeEvent(c, version), 'utf8').digest('hex');
 }
 
 export interface ChainRow extends EventContent {
   seq: number;
   hash: string;
+  /** The canonicalization version this row was hashed under (null ⇒ v1). */
+  canonVersion?: number | null;
 }
 
 export type ChainVerification =
@@ -101,7 +138,7 @@ export function verifyChain(rows: ChainRow[]): ChainVerification {
         actual: row.prevHash,
       };
     }
-    const recomputed = computeEventHash(row);
+    const recomputed = computeEventHash(row, row.canonVersion ?? 1);
     if (recomputed !== row.hash) {
       return {
         valid: false,
