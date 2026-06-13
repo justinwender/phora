@@ -81,6 +81,10 @@ still covers World Track B and the ENS tracks.
 - Commit frequently, one logical unit per commit, with a descriptive message. Never
   batch a long session into a single large commit (eligibility rule). Stage changes and
   propose a commit message; Justin reviews and commits himself.
+- After you complete each logical unit, stage only that unit's files with git add, give
+  me one recommended commit message, and then STOP your turn entirely. Do not begin the
+  next unit. Wait for me to commit and reply "continue" before doing any further work.
+  One unit, one stop, every time, including within a single task or prompt.
 - Commit plan files (this file, integration briefs, plan markdown). They are part of the
   submission.
 - Everything in this repo is public. Keep all plans and code inside project scope:
