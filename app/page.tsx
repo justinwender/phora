@@ -1,5 +1,6 @@
 import { AuthStatus } from "@/components/auth/AuthStatus";
 import { ServerSessionCheck } from "@/components/auth/ServerSessionCheck";
+import { WorldIdRegister } from "@/components/world/WorldIdRegister";
 
 export default function Home() {
   return (
@@ -15,6 +16,8 @@ export default function Home() {
         </div>
         <AuthStatus />
         <ServerSessionCheck />
+        <div className="h-px w-full bg-black/[.08] dark:bg-white/[.12]" />
+        <WorldIdRegister />
       </main>
     </div>
   );
