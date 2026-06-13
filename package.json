@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate"
   },
   "dependencies": {
     "@dynamic-labs-wallet/node-evm": "1.0.38",
@@ -14,9 +16,11 @@
     "@dynamic-labs/sdk-react-core": "4.88.5",
     "@dynamic-labs/wagmi-connector": "4.88.5",
     "@ensdomains/ensjs": "4.2.3",
+    "@neondatabase/serverless": "1.1.0",
     "@tanstack/react-query": "5.101.0",
     "@worldcoin/idkit": "4.1.8",
     "@worldcoin/idkit-core": "4.1.8",
+    "drizzle-orm": "0.45.2",
     "jose": "6.2.3",
     "next": "16.2.9",
     "react": "19.2.4",
@@ -29,6 +33,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "drizzle-kit": "0.31.10",
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
     "tailwindcss": "^4",
