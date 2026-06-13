@@ -1,4 +1,5 @@
 import { AuthStatus } from "@/components/auth/AuthStatus";
+import { ServerSessionCheck } from "@/components/auth/ServerSessionCheck";
 
 export default function Home() {
   return (
@@ -13,6 +14,7 @@ export default function Home() {
           </p>
         </div>
         <AuthStatus />
+        <ServerSessionCheck />
       </main>
     </div>
   );
