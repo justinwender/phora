@@ -15,6 +15,18 @@ export async function getIdentityForUser(
   return row ?? null;
 }
 
+/** The identity for a platform username (→ username.phora.eth), or null. */
+export async function getIdentityByUsername(
+  username: string,
+): Promise<Identity | null> {
+  const [row] = await db
+    .select()
+    .from(identities)
+    .where(eq(identities.username, username.toLowerCase()))
+    .limit(1);
+  return row ?? null;
+}
+
 export type IdentityAuth =
   | { ok: true; userId: string; identity: Identity }
   | { ok: false; status: number; error: string };
