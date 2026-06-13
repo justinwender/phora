@@ -8,6 +8,20 @@
       "when": 1781373427238,
       "tag": "0000_curly_archangel",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1781378836192,
+      "tag": "0001_uneven_hulk",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1781378862081,
+      "tag": "0002_append_only_trigger",
+      "breakpoints": true
     }
   ]
 }
