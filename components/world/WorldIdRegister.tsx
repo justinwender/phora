@@ -6,21 +6,31 @@ import {
   proofOfHuman,
   type RpContext,
 } from '@worldcoin/idkit';
+import { getAuthToken, useIsLoggedIn } from '@dynamic-labs/sdk-react-core';
 
 const WORLD_ACTION = 'register-identity';
 const APP_ID = process.env.NEXT_PUBLIC_WORLD_APP_ID as `app_${string}`;
 
-type Status = 'idle' | 'loading' | 'awaiting' | 'verifying' | 'success' | 'error';
+type Status =
+  | 'idle'
+  | 'loading'
+  | 'awaiting'
+  | 'verifying'
+  | 'created'
+  | 'duplicate'
+  | 'error';
 
 /**
- * Spine step 2 — World ID 4.0 registration (verify sub-unit).
+ * Spine step 2 — World ID 4.0 registration (persistence sub-unit).
  *
- * Flow: fetch a fresh RP-signature context from /api/world/rp-context (Unit 1),
- * open the IDKit proof-of-human request for `register-identity`, then forward the
- * resulting 4.0 proof to /api/world/verify, which verifies it against our RP and
- * returns the nullifier. No persistence yet — the nullifier is only displayed.
+ * Requires a logged-in Dynamic user. Fetches a fresh RP-signature context, opens
+ * the IDKit proof-of-human request for `register-identity`, then forwards the 4.0
+ * proof plus the Dynamic auth token to /api/world/verify. The server verifies the
+ * proof against our RP and creates the identity record keyed on the nullifier —
+ * rejecting (409) any second registration by the same human.
  */
 export function WorldIdRegister() {
+  const isLoggedIn = useIsLoggedIn();
   const [open, setOpen] = useState(false);
   const [rpContext, setRpContext] = useState<RpContext | null>(null);
   const [status, setStatus] = useState<Status>('idle');
@@ -56,11 +66,17 @@ export function WorldIdRegister() {
       <button
         type="button"
         onClick={start}
-        disabled={busy}
+        disabled={busy || !isLoggedIn}
         className="rounded-full bg-foreground px-5 py-2.5 text-sm font-medium text-background transition-colors hover:opacity-90 disabled:opacity-50"
       >
         {status === 'loading' ? 'Preparing…' : 'Register with World ID'}
       </button>
+
+      {!isLoggedIn && (
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">
+          Sign in first — the identity record is tied to your account.
+        </p>
+      )}
 
       {rpContext && (
         <IDKitRequestWidget
@@ -74,22 +90,31 @@ export function WorldIdRegister() {
           environment="production"
           handleVerify={async (result) => {
             setStatus('verifying');
+            const token = getAuthToken();
             const res = await fetch('/api/world/verify', {
               method: 'POST',
-              headers: { 'content-type': 'application/json' },
+              headers: {
+                'content-type': 'application/json',
+                ...(token ? { authorization: `Bearer ${token}` } : {}),
+              },
               body: JSON.stringify(result),
             });
             const data = await res.json();
+            if (res.status === 409 && data.status === 'already_registered') {
+              setNullifier(data.nullifier);
+              setStatus('duplicate');
+              return; // not an error — onSuccess may still fire
+            }
             if (!res.ok) {
               setError(JSON.stringify(data));
               setStatus('error');
               throw new Error('server verification failed'); // abort onSuccess
             }
             setNullifier(data.nullifier);
-            setStatus('success');
+            setStatus('created');
           }}
           onSuccess={() => {
-            // Nullifier was captured in handleVerify; nothing else to do here.
+            // Result handled in handleVerify.
           }}
           onError={(errorCode) => {
             setError(`World ID error: ${String(errorCode)}`);
@@ -106,12 +131,21 @@ export function WorldIdRegister() {
       {status === 'verifying' && (
         <p className="text-sm text-zinc-600 dark:text-zinc-400">Verifying proof server-side…</p>
       )}
-      {status === 'success' && nullifier && (
+      {status === 'created' && nullifier && (
         <p
-          data-testid="world-nullifier"
+          data-testid="world-created"
           className="max-w-md break-all font-mono text-sm text-zinc-700 dark:text-zinc-300"
         >
-          Verified unique human. Nullifier: <span className="font-semibold">{nullifier}</span>
+          Identity registered. Nullifier: <span className="font-semibold">{nullifier}</span>
+        </p>
+      )}
+      {status === 'duplicate' && nullifier && (
+        <p
+          data-testid="world-duplicate"
+          className="max-w-md break-all font-mono text-sm text-amber-600 dark:text-amber-400"
+        >
+          Already registered — this human already has an entry. Nullifier:{' '}
+          <span className="font-semibold">{nullifier}</span>
         </p>
       )}
       {status === 'error' && error && (
