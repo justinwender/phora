@@ -145,3 +145,7 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Claude Code — personal/machine-local settings (permission allowlists, etc.).
+# Shared config like .claude/launch.json IS tracked; only the .local file is ignored.
+.claude/settings.local.json
