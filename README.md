@@ -52,6 +52,39 @@ disclose.
   approval.
 - **Allium** — the unified behavioral profile.
 
+## ENS addressing: the offchain resolver
+
+Phora surfaces the registry through ENS without minting a name per attestation. A
+**CCIP-Read offchain resolver** (EIP-3668 + ENSIP-10 wildcard) serves every
+`*.phora.eth` subname as a **live projection of the attestation registry**:
+
+- `username.phora.eth` → the identity's current primary (most-recent open) wallet.
+- `usecase.username.phora.eth` (e.g. `banking.justin.phora.eth`) → the wallet attested
+  for that use-case.
+
+`resolve(name, data)` reverts `OffchainLookup` to the Phora gateway, which reads the
+registry, answers, and signs the response; the on-chain resolver verifies that signature
+(`SignatureVerifier` scheme) before returning. **Consent-gating is intrinsic to the
+namespace**: a use-case name only resolves while its attestation window is open — unlink
+the wallet and the name stops resolving, with no separate ACL.
+
+In production, `phora.eth`'s resolver record (in the ENS registry) points at this
+OffchainResolver, so every ENS-aware client resolves Phora names. On **Sepolia** the
+`.eth` registrar is mid-migration to **ENS v2** — `sepolia.app.ens.domains` is the v2
+alpha, which uses a different registry than the v1 contracts viem/ensjs read, and the
+v1 `ETHRegistrarController` is no longer an authorized controller. Binding `phora.eth`'s
+registry resolver is therefore **deferred**; the full CCIP-Read resolution **and**
+consent-gating are demonstrated directly against the deployed resolver:
+
+```
+contracts/PhoraOffchainResolver.sol     the EIP-3668 resolver (deployed on Sepolia)
+app/api/ens/gateway/route.ts            the signing gateway (reads the live registry)
+scripts/ens/seed-demo.mts               set username + attest a "banking" wallet
+scripts/ens/demo-resolve.mts            resolve before/after an unlink (consent-gating)
+```
+
+Deployed resolver (Sepolia): `0x7574581d7D872F605FD760Bb1BAcc69a551bf6e0`.
+
 ## Repository layout
 
 ```

@@ -70,6 +70,12 @@ web_modules/
 .env.*
 !.env.example
 
+# ENS commit-reveal secret (transient registration secret)
+.phora-root-secret
+
+# Demo-only attested wallet private key (offchain-resolver demo)
+.phora-banking-wallet
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache
