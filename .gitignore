@@ -76,6 +76,9 @@ web_modules/
 # Demo-only attested wallet private key (offchain-resolver demo)
 .phora-banking-wallet
 
+# Demo video script / recording notes — kept local, out of the public repo
+docs/demo-script.md
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache
